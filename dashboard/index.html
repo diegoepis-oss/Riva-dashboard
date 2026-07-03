@@ -131,6 +131,7 @@
 <header>
   <h1>Riva — Dashboard Controllo Qualità Produzione</h1>
   <p>Sistema di controllo estetico tramezzini impacchettati — dati aggregati dalle linee di produzione (nessuna immagine, solo statistiche numeriche).</p>
+  <p id="scale-note" class="status-line" style="margin-top:4px;">&nbsp;</p>
 </header>
 
 <main>
@@ -159,8 +160,24 @@
       </div>
     </div>
     <div>
-      <label for="f-threshold">Soglia difettosità (score %)</label>
-      <input type="number" id="f-threshold" min="0" max="100" step="5" value="70" style="width:80px" />
+      <label for="f-date-from">Personalizzato: da</label>
+      <input type="date" id="f-date-from" />
+    </div>
+    <div>
+      <label for="f-date-to">a</label>
+      <input type="date" id="f-date-to" />
+    </div>
+    <div>
+      <label for="f-granularity">Raggruppa per</label>
+      <select id="f-granularity">
+        <option value="day">Giorno</option>
+        <option value="week">Settimana</option>
+        <option value="month">Mese</option>
+      </select>
+    </div>
+    <div>
+      <label for="f-threshold" id="f-threshold-label">Soglia difettosità (punteggio)</label>
+      <input type="number" id="f-threshold" min="0" step="0.5" value="3" style="width:80px" />
     </div>
     <div>
       <button class="link-btn" id="toggle-settings">⚙ Personalizza etichette</button>
@@ -184,7 +201,7 @@
     <div class="chart-head">
       <div>
         <h2>Andamento metriche nel tempo</h2>
-        <div class="caption">Punteggio medio (%) per giorno. Clic su una voce in legenda per nascondere/mostrare una metrica.</div>
+        <div class="caption" id="trend-caption">Punteggio medio per periodo. Clic su una voce in legenda per nascondere/mostrare una metrica.</div>
       </div>
       <button class="link-btn" data-toggle-table="trend">Vedi come tabella</button>
     </div>
@@ -197,7 +214,7 @@
     <div class="chart-head">
       <div>
         <h2>Confronto tra ricette</h2>
-        <div class="caption">Punteggio medio (%) per ricetta, sulle metriche attualmente selezionate.</div>
+        <div class="caption">Punteggio medio per ricetta, sulle metriche attualmente selezionate.</div>
       </div>
       <button class="link-btn" data-toggle-table="recipe">Vedi come tabella</button>
     </div>
@@ -209,7 +226,7 @@
     <div class="chart-head">
       <div>
         <h2>Confronto tra linee / fasi</h2>
-        <div class="caption">Punteggio medio (%) per linea di produzione — pronto per quando verranno collegate altre linee o fasi.</div>
+        <div class="caption">Punteggio medio per linea di produzione — pronto per quando verranno collegate altre linee o fasi.</div>
       </div>
       <button class="link-btn" data-toggle-table="line">Vedi come tabella</button>
     </div>
@@ -293,7 +310,12 @@
     });
   }
 
-  let state = { lines: [], recipes: [], rangeDays: 0, threshold: 70, hiddenMetrics: new Set() };
+  let state = {
+    lines: [], recipes: [], hiddenMetrics: new Set(),
+    rangeMode: "preset", rangeDays: 0, fromDate: null, toDate: null,
+    granularity: "day", threshold: 3, maxScore: 4,
+  };
+  const GRANULARITY_LABEL = { day: "Giorno", week: "Settimana", month: "Mese" };
 
   function onDataReady() {
     allRecords.forEach(r => { r._date = new Date(r.ts); r.metrics.forEach(m => metricsCatalog.set(m.key, m.label)); });
@@ -309,19 +331,42 @@
     recipeSel.size = Math.min(4, Math.max(2, recipes.length));
     state.lines = lines; state.recipes = recipes;
 
+    state.maxScore = Math.max(1, ...allRecords.flatMap(r => r.metrics.map(m => m.max)));
+    state.threshold = Math.round(state.maxScore * 0.7 * 2) / 2;
+    const thresholdInput = document.getElementById("f-threshold");
+    thresholdInput.max = state.maxScore;
+    thresholdInput.value = state.threshold;
+    document.getElementById("scale-note").textContent =
+      `Scala punteggio dei controlli: da 1 a ${state.maxScore} per ogni metrica.`;
+
     buildLabelSettings();
 
     lineSel.addEventListener("change", () => { state.lines = selectedValues(lineSel); render(); });
     recipeSel.addEventListener("change", () => { state.recipes = selectedValues(recipeSel); render(); });
-    document.getElementById("f-threshold").addEventListener("input", (e) => { state.threshold = Number(e.target.value) || 0; render(); });
+    thresholdInput.addEventListener("input", (e) => { state.threshold = Number(e.target.value) || 0; render(); });
+    document.getElementById("f-granularity").addEventListener("change", (e) => { state.granularity = e.target.value; render(); });
     document.querySelectorAll(".preset-btn").forEach(btn => {
       btn.addEventListener("click", () => {
         document.querySelectorAll(".preset-btn").forEach(b => b.classList.remove("active"));
         btn.classList.add("active");
+        state.rangeMode = "preset";
         state.rangeDays = Number(btn.dataset.days);
+        document.getElementById("f-date-from").value = "";
+        document.getElementById("f-date-to").value = "";
         render();
       });
     });
+    const fromInput = document.getElementById("f-date-from");
+    const toInput = document.getElementById("f-date-to");
+    function applyCustomRange() {
+      state.rangeMode = "custom";
+      state.fromDate = fromInput.value ? new Date(fromInput.value + "T00:00:00") : null;
+      state.toDate = toInput.value ? new Date(toInput.value + "T23:59:59") : null;
+      document.querySelectorAll(".preset-btn").forEach(b => b.classList.remove("active"));
+      render();
+    }
+    fromInput.addEventListener("change", applyCustomRange);
+    toInput.addEventListener("change", applyCustomRange);
     document.getElementById("toggle-settings").addEventListener("click", () => {
       document.getElementById("settings-panel").classList.toggle("open");
     });
@@ -365,7 +410,10 @@
 
   function filteredRecords() {
     let recs = allRecords.filter(r => state.lines.includes(r.line) && state.recipes.includes(r.recipe));
-    if (state.rangeDays > 0 && recs.length) {
+    if (state.rangeMode === "custom" && (state.fromDate || state.toDate)) {
+      if (state.fromDate) recs = recs.filter(r => r._date >= state.fromDate);
+      if (state.toDate) recs = recs.filter(r => r._date <= state.toDate);
+    } else if (state.rangeMode === "preset" && state.rangeDays > 0 && recs.length) {
       const maxDate = recs.reduce((m, r) => r._date > m ? r._date : m, recs[0]._date);
       const cutoff = new Date(maxDate.getTime() - state.rangeDays * 86400000);
       recs = recs.filter(r => r._date >= cutoff);
@@ -373,7 +421,32 @@
     return recs;
   }
 
-  function pctOf(m) { return (m.score / m.max) * 100; }
+  function scoreOf(m) { return m.score; }
+
+  function bucketKey(date, granularity) {
+    if (granularity === "week") {
+      const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+      const dayIdx = (d.getUTCDay() + 6) % 7; // lunedì = 0
+      d.setUTCDate(d.getUTCDate() - dayIdx);
+      return d.toISOString().slice(0, 10);
+    }
+    if (granularity === "month") return date.toISOString().slice(0, 7);
+    return date.toISOString().slice(0, 10);
+  }
+
+  function bucketLabel(key, granularity) {
+    if (granularity === "week") return "sett. " + key.slice(5);
+    if (granularity === "month") {
+      const months = ["gen","feb","mar","apr","mag","giu","lug","ago","set","ott","nov","dic"];
+      const [y, m] = key.split("-");
+      return months[Number(m) - 1] + " " + y;
+    }
+    return key.slice(5);
+  }
+
+  function niceTicks(max) {
+    return [0, 0.25, 0.5, 0.75, 1].map(f => Math.round(max * f * 10) / 10);
+  }
 
   function render() {
     const recs = filteredRecords();
@@ -390,18 +463,18 @@
       document.getElementById("kpi-below").textContent = "—";
       return;
     }
-    let allPct = [];
-    recs.forEach(r => r.metrics.forEach(m => allPct.push(pctOf(m))));
-    const avg = allPct.reduce((a, b) => a + b, 0) / allPct.length;
-    document.getElementById("kpi-avg").textContent = avg.toFixed(1) + "%";
+    let allScores = [];
+    recs.forEach(r => r.metrics.forEach(m => allScores.push(scoreOf(m))));
+    const avg = allScores.reduce((a, b) => a + b, 0) / allScores.length;
+    document.getElementById("kpi-avg").textContent = avg.toFixed(1) + " / " + state.maxScore;
 
     let belowCount = 0;
     recs.forEach(r => {
-      const rPct = r.metrics.reduce((a, m) => a + pctOf(m), 0) / r.metrics.length;
-      if (rPct < state.threshold) belowCount++;
+      const rAvg = r.metrics.reduce((a, m) => a + scoreOf(m), 0) / r.metrics.length;
+      if (rAvg < state.threshold) belowCount++;
     });
     document.getElementById("kpi-below").textContent = ((belowCount / recs.length) * 100).toFixed(1) + "%";
-    document.getElementById("kpi-below-sub").textContent = `soglia impostata a ${state.threshold}%`;
+    document.getElementById("kpi-below-sub").textContent = `soglia impostata a ${state.threshold} (su ${state.maxScore})`;
 
     const first = recs[0]._date, last = recs[recs.length - 1]._date;
     document.getElementById("kpi-count-sub").textContent =
@@ -410,37 +483,41 @@
 
   // ---------- Trend chart (multi-line) ----------
   function renderTrendChart(recs) {
-    const metricKeys = [...metricsCatalog.keys()].filter(k => !state.hiddenMetrics.has(k));
-    const byDay = new Map(); // dayStr -> key -> {sum,count}
+    const gran = state.granularity;
+    document.getElementById("trend-caption").textContent =
+      `Punteggio medio (scala 0-${state.maxScore}) per ${GRANULARITY_LABEL[gran].toLowerCase()}. Clic su una voce in legenda per nascondere/mostrare una metrica.`;
+
+    const byBucket = new Map(); // bucketKey -> metricKey -> {sum,count}
     recs.forEach(r => {
-      const day = r._date.toISOString().slice(0, 10);
-      if (!byDay.has(day)) byDay.set(day, new Map());
-      const dayMap = byDay.get(day);
+      const bucket = bucketKey(r._date, gran);
+      if (!byBucket.has(bucket)) byBucket.set(bucket, new Map());
+      const bucketMap = byBucket.get(bucket);
       r.metrics.forEach(m => {
-        if (!dayMap.has(m.key)) dayMap.set(m.key, { sum: 0, count: 0 });
-        const acc = dayMap.get(m.key);
-        acc.sum += pctOf(m); acc.count += 1;
+        if (!bucketMap.has(m.key)) bucketMap.set(m.key, { sum: 0, count: 0 });
+        const acc = bucketMap.get(m.key);
+        acc.sum += scoreOf(m); acc.count += 1;
       });
     });
-    const days = [...byDay.keys()].sort();
+    const buckets = [...byBucket.keys()].sort();
+    const xDisplayLabels = buckets.map(b => bucketLabel(b, gran));
     const series = [...metricsCatalog.keys()].map((key, i) => ({
       key,
       label: displayLabel(key, metricsCatalog.get(key)),
       color: resolvedColors[i % resolvedColors.length],
       hidden: state.hiddenMetrics.has(key),
-      points: days.map(d => {
-        const acc = byDay.get(d).get(key);
+      points: buckets.map(b => {
+        const acc = byBucket.get(b).get(key);
         return acc ? acc.sum / acc.count : null;
       }),
     }));
 
-    drawLineChart(document.getElementById("trend-chart"), days, series);
+    drawLineChart(document.getElementById("trend-chart"), buckets, xDisplayLabels, series, state.maxScore);
     renderLegend(document.getElementById("trend-legend"), series, (key) => {
       if (state.hiddenMetrics.has(key)) state.hiddenMetrics.delete(key); else state.hiddenMetrics.add(key);
       render();
     });
-    renderTableFromSeries(document.getElementById("trend-table"), ["Giorno", ...series.map(s => s.label)],
-      days.map((d, i) => [d, ...series.map(s => s.points[i] == null ? "—" : s.points[i].toFixed(1) + "%")]));
+    renderTableFromSeries(document.getElementById("trend-table"), [GRANULARITY_LABEL[gran], ...series.map(s => s.label)],
+      buckets.map((b, i) => [xDisplayLabels[i], ...series.map(s => s.points[i] == null ? "—" : s.points[i].toFixed(1))]));
   }
 
   function renderLegend(container, series, onToggle) {
@@ -463,19 +540,19 @@
     container.style.display = container.style.display || "none";
   }
 
-  function drawLineChart(container, xLabels, series) {
+  function drawLineChart(container, bucketKeys, xLabels, series, maxScore) {
     const W = 900, H = 260, padL = 34, padR = 12, padT = 12, padB = 24;
     const visible = series.filter(s => !s.hidden);
     if (!xLabels.length || !visible.length) { container.innerHTML = "<p class='status-line'>Nessun dato nel periodo selezionato.</p>"; return; }
 
     const innerW = W - padL - padR, innerH = H - padT - padB;
     const xStep = xLabels.length > 1 ? innerW / (xLabels.length - 1) : 0;
-    const maxY = 100, minY = 0;
+    const maxY = maxScore, minY = 0;
     const yFor = v => padT + innerH - ((v - minY) / (maxY - minY)) * innerH;
     const xFor = i => padL + i * xStep;
 
     let svg = `<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img">`;
-    [0, 25, 50, 75, 100].forEach(v => {
+    niceTicks(maxY).forEach(v => {
       const y = yFor(v);
       svg += `<line class="gridline" x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}"/>`;
       svg += `<text class="axis-label" x="${padL - 6}" y="${y + 3}" text-anchor="end">${v}</text>`;
@@ -483,7 +560,7 @@
     const labelEvery = Math.max(1, Math.ceil(xLabels.length / 8));
     xLabels.forEach((d, i) => {
       if (i % labelEvery === 0 || i === xLabels.length - 1) {
-        svg += `<text class="axis-label" x="${xFor(i)}" y="${H - 4}" text-anchor="middle">${d.slice(5)}</text>`;
+        svg += `<text class="axis-label" x="${xFor(i)}" y="${H - 4}" text-anchor="middle">${d}</text>`;
       }
     });
 
@@ -510,7 +587,7 @@
       idx = Math.max(0, Math.min(xLabels.length - 1, idx));
       const lines = visible.map(s => {
         const v = s.points[idx];
-        return `<div>${s.label}: ${v == null ? "n/d" : v.toFixed(1) + "%"}</div>`;
+        return `<div>${s.label}: ${v == null ? "n/d" : v.toFixed(1) + " / " + maxScore}</div>`;
       }).join("");
       showTooltip(ev.clientX, ev.clientY, `<strong>${xLabels[idx]}</strong>${lines}`);
     });
@@ -528,7 +605,7 @@
         if (activeMetricKeys && !activeMetricKeys.includes(m.key)) return;
         if (!gm.has(m.key)) gm.set(m.key, { sum: 0, count: 0 });
         const acc = gm.get(m.key);
-        acc.sum += pctOf(m); acc.count += 1;
+        acc.sum += scoreOf(m); acc.count += 1;
       });
     });
     return map;
@@ -543,9 +620,9 @@
       key, label: displayLabel(key, metricsCatalog.get(key)), color: resolvedColors[i % resolvedColors.length],
       values: groups.map(g => { const acc = grouped.get(g).get(key); return acc ? acc.sum / acc.count : null; }),
     }));
-    drawGroupedBarChart(document.getElementById("recipe-chart"), groups, series);
+    drawGroupedBarChart(document.getElementById("recipe-chart"), groups, series, state.maxScore);
     renderTableFromSeries(document.getElementById("recipe-table"), ["Ricetta", ...series.map(s => s.label)],
-      groups.map((g, i) => [g, ...series.map(s => s.values[i] == null ? "—" : s.values[i].toFixed(1) + "%")]));
+      groups.map((g, i) => [g, ...series.map(s => s.values[i] == null ? "—" : s.values[i].toFixed(1))]));
   }
 
   function renderLineChart(recs) {
@@ -557,12 +634,12 @@
       key, label: displayLabel(key, metricsCatalog.get(key)), color: resolvedColors[i % resolvedColors.length],
       values: groups.map(g => { const acc = grouped.get(g).get(key); return acc ? acc.sum / acc.count : null; }),
     }));
-    drawGroupedBarChart(document.getElementById("line-chart"), groups, series);
+    drawGroupedBarChart(document.getElementById("line-chart"), groups, series, state.maxScore);
     renderTableFromSeries(document.getElementById("line-table"), ["Linea", ...series.map(s => s.label)],
-      groups.map((g, i) => [g, ...series.map(s => s.values[i] == null ? "—" : s.values[i].toFixed(1) + "%")]));
+      groups.map((g, i) => [g, ...series.map(s => s.values[i] == null ? "—" : s.values[i].toFixed(1))]));
   }
 
-  function drawGroupedBarChart(container, groups, series) {
+  function drawGroupedBarChart(container, groups, series, maxScore) {
     const W = 900, H = 260, padL = 34, padR = 12, padT = 12, padB = 30;
     if (!groups.length || !series.length) { container.innerHTML = "<p class='status-line'>Nessun dato nel periodo selezionato.</p>"; return; }
 
@@ -570,11 +647,11 @@
     const groupW = innerW / groups.length;
     const barGap = 3, groupPad = 10;
     const barW = Math.max(4, (groupW - groupPad * 2 - barGap * (series.length - 1)) / series.length);
-    const maxY = 100;
+    const maxY = maxScore;
     const yFor = v => padT + innerH - (v / maxY) * innerH;
 
     let svg = `<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img">`;
-    [0, 25, 50, 75, 100].forEach(v => {
+    niceTicks(maxY).forEach(v => {
       const y = yFor(v);
       svg += `<line class="gridline" x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}"/>`;
       svg += `<text class="axis-label" x="${padL - 6}" y="${y + 3}" text-anchor="end">${v}</text>`;
@@ -599,7 +676,7 @@
     svgEl.querySelectorAll("rect").forEach(rect => {
       rect.addEventListener("mousemove", (ev) => {
         const gi = Number(rect.dataset.g), si = Number(rect.dataset.s);
-        showTooltip(ev.clientX, ev.clientY, `<strong>${groups[gi]}</strong><div>${series[si].label}: ${series[si].values[gi].toFixed(1)}%</div>`);
+        showTooltip(ev.clientX, ev.clientY, `<strong>${groups[gi]}</strong><div>${series[si].label}: ${series[si].values[gi].toFixed(1)} / ${maxScore}</div>`);
       });
       rect.addEventListener("mouseleave", hideTooltip);
     });
