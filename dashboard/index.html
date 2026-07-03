@@ -1,0 +1,619 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Riva — Dashboard Controllo Qualità Produzione</title>
+<style>
+  :root {
+    --surface-1:      #fcfcfb;
+    --page-plane:     #f9f9f7;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted:     #898781;
+    --gridline:       #e1e0d9;
+    --baseline:       #c3c2b7;
+    --border:         rgba(11,11,11,0.10);
+    --card-radius:    10px;
+
+    --series-1: #2a78d6; /* blue */
+    --series-2: #1baf7a; /* aqua */
+    --series-3: #eda100; /* yellow */
+    --series-4: #4a3aa7; /* violet */
+    --series-5: #e34948; /* red */
+    --series-6: #eb6834; /* orange */
+
+    --good:     #0ca30c;
+    --warning:  #fab219;
+    --critical: #d03b3b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --surface-1:      #1a1a19;
+      --page-plane:     #0d0d0d;
+      --text-primary:   #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted:     #898781;
+      --gridline:       #2c2c2a;
+      --baseline:       #383835;
+      --border:         rgba(255,255,255,0.10);
+
+      --series-1: #3987e5;
+      --series-2: #199e70;
+      --series-3: #c98500;
+      --series-4: #9085e9;
+      --series-5: #e66767;
+      --series-6: #d95926;
+
+      --good:     #0ca30c;
+      --warning:  #fab219;
+      --critical: #d03b3b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--page-plane);
+    color: var(--text-primary);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  header {
+    padding: 20px 24px 8px;
+  }
+  header h1 { margin: 0 0 4px; font-size: 20px; }
+  header p { margin: 0; color: var(--text-secondary); font-size: 13px; }
+
+  main { padding: 8px 24px 40px; max-width: 1200px; margin: 0 auto; }
+
+  .card {
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: var(--card-radius);
+    padding: 16px 18px;
+    margin-bottom: 16px;
+  }
+
+  .filters { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; }
+  .filters label { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 4px; }
+  .filters select, .filters input[type=number], .filters input[type=date] {
+    font: inherit; font-size: 13px; padding: 6px 8px; border-radius: 6px;
+    border: 1px solid var(--border); background: var(--page-plane); color: var(--text-primary);
+  }
+  .preset-row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .preset-btn {
+    font-size: 12px; padding: 6px 10px; border-radius: 999px; border: 1px solid var(--border);
+    background: var(--page-plane); color: var(--text-secondary); cursor: pointer;
+  }
+  .preset-btn.active { background: var(--series-1); color: #fff; border-color: var(--series-1); }
+
+  .kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
+  .kpi { padding: 14px 16px; }
+  .kpi .label { font-size: 12px; color: var(--text-muted); margin-bottom: 6px; }
+  .kpi .value { font-size: 28px; font-weight: 600; }
+  .kpi .sub { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+
+  .chart-card h2 { font-size: 15px; margin: 0 0 2px; }
+  .chart-card .caption { font-size: 12px; color: var(--text-muted); margin-bottom: 10px; }
+  .chart-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; flex-wrap: wrap; }
+  .link-btn { font-size: 12px; color: var(--series-1); background: none; border: none; cursor: pointer; padding: 2px 0; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; font-size: 12px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; cursor: pointer; color: var(--text-secondary); user-select: none; }
+  .legend-item.off { opacity: 0.35; }
+  .swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+
+  svg.chart { width: 100%; height: auto; display: block; overflow: visible; }
+  .axis-label { fill: var(--text-muted); font-size: 10px; }
+  .gridline { stroke: var(--gridline); stroke-width: 1; }
+  .baseline { stroke: var(--baseline); stroke-width: 1; }
+
+  .tooltip {
+    position: fixed; pointer-events: none; background: var(--text-primary); color: var(--surface-1);
+    font-size: 12px; padding: 6px 9px; border-radius: 6px; opacity: 0; transform: translate(-50%, -110%);
+    z-index: 20; white-space: nowrap;
+  }
+
+  table.data-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; }
+  table.data-table th, table.data-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--gridline); }
+  table.data-table th { color: var(--text-muted); font-weight: 500; }
+
+  .settings-panel { display: none; }
+  .settings-panel.open { display: block; }
+  .settings-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; font-size: 13px; }
+  .settings-row input[type=text] { flex: 1; padding: 5px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--page-plane); color: var(--text-primary); font: inherit; }
+
+  #upload-fallback { display: none; }
+  #upload-fallback.show { display: block; }
+  .status-line { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Riva — Dashboard Controllo Qualità Produzione</h1>
+  <p>Sistema di controllo estetico tramezzini impacchettati — dati aggregati dalle linee di produzione (nessuna immagine, solo statistiche numeriche).</p>
+</header>
+
+<main>
+
+  <section class="card" id="upload-fallback">
+    <strong>Impossibile caricare automaticamente i dati.</strong>
+    <p class="status-line">Se questa pagina è stata aperta con doppio click (senza un piccolo server locale), il browser blocca la lettura dei file dati. Carica manualmente i file dalla cartella <code>data/</code>:</p>
+    <input type="file" id="file-picker" multiple accept=".jsonl,.json" />
+  </section>
+
+  <section class="card filters">
+    <div>
+      <label for="f-line">Linea / fase</label>
+      <select id="f-line" multiple size="1"></select>
+    </div>
+    <div>
+      <label for="f-recipe">Ricetta</label>
+      <select id="f-recipe" multiple size="1"></select>
+    </div>
+    <div>
+      <label>Intervallo</label>
+      <div class="preset-row" id="preset-row">
+        <button class="preset-btn" data-days="7">Ultimi 7 giorni</button>
+        <button class="preset-btn" data-days="30">Ultimi 30 giorni</button>
+        <button class="preset-btn active" data-days="0">Tutto</button>
+      </div>
+    </div>
+    <div>
+      <label for="f-threshold">Soglia difettosità (score %)</label>
+      <input type="number" id="f-threshold" min="0" max="100" step="5" value="70" style="width:80px" />
+    </div>
+    <div>
+      <button class="link-btn" id="toggle-settings">⚙ Personalizza etichette</button>
+    </div>
+  </section>
+
+  <section class="card settings-panel" id="settings-panel">
+    <h2 style="margin-top:0;font-size:14px;">Personalizza etichette metriche</h2>
+    <p class="status-line" style="margin-top:-4px;">Le etichette qui sotto vengono usate in tutti i grafici e sono salvate solo su questo PC (nessuna modifica ai sistemi di linea).</p>
+    <div id="label-settings"></div>
+    <button class="preset-btn" id="reset-settings">Ripristina etichette originali</button>
+  </section>
+
+  <section class="kpi-row">
+    <div class="card kpi"><div class="label">Ispezioni nel periodo</div><div class="value" id="kpi-count">—</div><div class="sub" id="kpi-count-sub">&nbsp;</div></div>
+    <div class="card kpi"><div class="label">Punteggio medio complessivo</div><div class="value" id="kpi-avg">—</div><div class="sub">su tutte le metriche attive</div></div>
+    <div class="card kpi"><div class="label">% ispezioni sotto soglia</div><div class="value" id="kpi-below">—</div><div class="sub" id="kpi-below-sub">&nbsp;</div></div>
+  </section>
+
+  <section class="card chart-card">
+    <div class="chart-head">
+      <div>
+        <h2>Andamento metriche nel tempo</h2>
+        <div class="caption">Punteggio medio (%) per giorno. Clic su una voce in legenda per nascondere/mostrare una metrica.</div>
+      </div>
+      <button class="link-btn" data-toggle-table="trend">Vedi come tabella</button>
+    </div>
+    <div id="trend-chart"></div>
+    <div id="trend-legend" class="legend"></div>
+    <div id="trend-table"></div>
+  </section>
+
+  <section class="card chart-card">
+    <div class="chart-head">
+      <div>
+        <h2>Confronto tra ricette</h2>
+        <div class="caption">Punteggio medio (%) per ricetta, sulle metriche attualmente selezionate.</div>
+      </div>
+      <button class="link-btn" data-toggle-table="recipe">Vedi come tabella</button>
+    </div>
+    <div id="recipe-chart"></div>
+    <div id="recipe-table"></div>
+  </section>
+
+  <section class="card chart-card">
+    <div class="chart-head">
+      <div>
+        <h2>Confronto tra linee / fasi</h2>
+        <div class="caption">Punteggio medio (%) per linea di produzione — pronto per quando verranno collegate altre linee o fasi.</div>
+      </div>
+      <button class="link-btn" data-toggle-table="line">Vedi come tabella</button>
+    </div>
+    <div id="line-chart"></div>
+    <div id="line-table"></div>
+  </section>
+
+</main>
+
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  const PALETTE = ["var(--series-1)","var(--series-2)","var(--series-3)","var(--series-4)","var(--series-5)","var(--series-6)"];
+  const resolvedColors = PALETTE.map(v => getComputedColor(v));
+  function getComputedColor(cssVar) {
+    const probe = document.createElement("span");
+    probe.style.color = cssVar;
+    document.body.appendChild(probe);
+    const c = getComputedStyle(probe).color;
+    probe.remove();
+    return c;
+  }
+
+  const tooltipEl = document.getElementById("tooltip");
+  function showTooltip(x, y, html) {
+    tooltipEl.innerHTML = html;
+    tooltipEl.style.left = x + "px";
+    tooltipEl.style.top = y + "px";
+    tooltipEl.style.opacity = "1";
+  }
+  function hideTooltip() { tooltipEl.style.opacity = "0"; }
+
+  const LABEL_KEY = "riva_dashboard_metric_labels_v1";
+  let labelOverrides = JSON.parse(localStorage.getItem(LABEL_KEY) || "{}");
+  function saveLabelOverrides() { localStorage.setItem(LABEL_KEY, JSON.stringify(labelOverrides)); }
+  function displayLabel(key, originalLabel) { return labelOverrides[key] || originalLabel || key; }
+
+  let allRecords = [];
+  let metricsCatalog = new Map(); // key -> original label
+
+  function parseJsonl(text) {
+    return text.split("\n").filter(l => l.trim()).map(l => JSON.parse(l));
+  }
+
+  async function loadData() {
+    try {
+      const manifestRes = await fetch("../data/sources.json", { cache: "no-store" });
+      if (!manifestRes.ok) throw new Error("manifest non trovato");
+      const manifest = await manifestRes.json();
+      for (const src of manifest) {
+        const res = await fetch("../data/" + src.file, { cache: "no-store" });
+        if (!res.ok) continue;
+        const text = await res.text();
+        allRecords = allRecords.concat(parseJsonl(text));
+      }
+      if (allRecords.length === 0) throw new Error("nessun dato");
+      onDataReady();
+    } catch (e) {
+      document.getElementById("upload-fallback").classList.add("show");
+      setupManualUpload();
+    }
+  }
+
+  function setupManualUpload() {
+    document.getElementById("file-picker").addEventListener("change", async (ev) => {
+      const files = Array.from(ev.target.files);
+      allRecords = [];
+      for (const file of files) {
+        const text = await file.text();
+        if (file.name.endsWith(".jsonl")) {
+          allRecords = allRecords.concat(parseJsonl(text));
+        }
+      }
+      if (allRecords.length) {
+        document.getElementById("upload-fallback").classList.remove("show");
+        onDataReady();
+      }
+    });
+  }
+
+  let state = { lines: [], recipes: [], rangeDays: 0, threshold: 70, hiddenMetrics: new Set() };
+
+  function onDataReady() {
+    allRecords.forEach(r => { r._date = new Date(r.ts); r.metrics.forEach(m => metricsCatalog.set(m.key, m.label)); });
+    allRecords.sort((a, b) => a._date - b._date);
+
+    const lineSel = document.getElementById("f-line");
+    const recipeSel = document.getElementById("f-recipe");
+    const lines = [...new Set(allRecords.map(r => r.line))];
+    const recipes = [...new Set(allRecords.map(r => r.recipe))];
+    lineSel.innerHTML = lines.map(l => `<option value="${l}" selected>${l}</option>`).join("");
+    recipeSel.innerHTML = recipes.map(r => `<option value="${r}" selected>${r}</option>`).join("");
+    lineSel.size = Math.min(4, Math.max(2, lines.length));
+    recipeSel.size = Math.min(4, Math.max(2, recipes.length));
+    state.lines = lines; state.recipes = recipes;
+
+    buildLabelSettings();
+
+    lineSel.addEventListener("change", () => { state.lines = selectedValues(lineSel); render(); });
+    recipeSel.addEventListener("change", () => { state.recipes = selectedValues(recipeSel); render(); });
+    document.getElementById("f-threshold").addEventListener("input", (e) => { state.threshold = Number(e.target.value) || 0; render(); });
+    document.querySelectorAll(".preset-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".preset-btn").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        state.rangeDays = Number(btn.dataset.days);
+        render();
+      });
+    });
+    document.getElementById("toggle-settings").addEventListener("click", () => {
+      document.getElementById("settings-panel").classList.toggle("open");
+    });
+    document.getElementById("reset-settings").addEventListener("click", () => {
+      labelOverrides = {}; saveLabelOverrides(); buildLabelSettings(); render();
+    });
+    document.querySelectorAll("[data-toggle-table]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const key = btn.dataset.toggleTable;
+        const el = document.getElementById(key + "-table");
+        const isOpen = el.style.display === "block";
+        el.style.display = isOpen ? "none" : "block";
+        btn.textContent = isOpen ? "Vedi come tabella" : "Nascondi tabella";
+      });
+    });
+
+    render();
+  }
+
+  function selectedValues(select) { return Array.from(select.selectedOptions).map(o => o.value); }
+
+  function buildLabelSettings() {
+    const container = document.getElementById("label-settings");
+    container.innerHTML = "";
+    [...metricsCatalog.entries()].forEach(([key, label]) => {
+      const row = document.createElement("div");
+      row.className = "settings-row";
+      row.innerHTML = `<span style="width:170px;color:var(--text-muted)">${label}</span>
+        <input type="text" data-key="${key}" value="${labelOverrides[key] || ""}" placeholder="Etichetta personalizzata (facoltativa)" />`;
+      container.appendChild(row);
+    });
+    container.querySelectorAll("input").forEach(inp => {
+      inp.addEventListener("input", () => {
+        const key = inp.dataset.key;
+        if (inp.value.trim()) labelOverrides[key] = inp.value.trim(); else delete labelOverrides[key];
+        saveLabelOverrides();
+        render();
+      });
+    });
+  }
+
+  function filteredRecords() {
+    let recs = allRecords.filter(r => state.lines.includes(r.line) && state.recipes.includes(r.recipe));
+    if (state.rangeDays > 0 && recs.length) {
+      const maxDate = recs.reduce((m, r) => r._date > m ? r._date : m, recs[0]._date);
+      const cutoff = new Date(maxDate.getTime() - state.rangeDays * 86400000);
+      recs = recs.filter(r => r._date >= cutoff);
+    }
+    return recs;
+  }
+
+  function pctOf(m) { return (m.score / m.max) * 100; }
+
+  function render() {
+    const recs = filteredRecords();
+    renderKpis(recs);
+    renderTrendChart(recs);
+    renderRecipeChart(recs);
+    renderLineChart(recs);
+  }
+
+  function renderKpis(recs) {
+    document.getElementById("kpi-count").textContent = recs.length.toLocaleString("it-IT");
+    if (!recs.length) {
+      document.getElementById("kpi-avg").textContent = "—";
+      document.getElementById("kpi-below").textContent = "—";
+      return;
+    }
+    let allPct = [];
+    recs.forEach(r => r.metrics.forEach(m => allPct.push(pctOf(m))));
+    const avg = allPct.reduce((a, b) => a + b, 0) / allPct.length;
+    document.getElementById("kpi-avg").textContent = avg.toFixed(1) + "%";
+
+    let belowCount = 0;
+    recs.forEach(r => {
+      const rPct = r.metrics.reduce((a, m) => a + pctOf(m), 0) / r.metrics.length;
+      if (rPct < state.threshold) belowCount++;
+    });
+    document.getElementById("kpi-below").textContent = ((belowCount / recs.length) * 100).toFixed(1) + "%";
+    document.getElementById("kpi-below-sub").textContent = `soglia impostata a ${state.threshold}%`;
+
+    const first = recs[0]._date, last = recs[recs.length - 1]._date;
+    document.getElementById("kpi-count-sub").textContent =
+      first.toLocaleDateString("it-IT") + " → " + last.toLocaleDateString("it-IT");
+  }
+
+  // ---------- Trend chart (multi-line) ----------
+  function renderTrendChart(recs) {
+    const metricKeys = [...metricsCatalog.keys()].filter(k => !state.hiddenMetrics.has(k));
+    const byDay = new Map(); // dayStr -> key -> {sum,count}
+    recs.forEach(r => {
+      const day = r._date.toISOString().slice(0, 10);
+      if (!byDay.has(day)) byDay.set(day, new Map());
+      const dayMap = byDay.get(day);
+      r.metrics.forEach(m => {
+        if (!dayMap.has(m.key)) dayMap.set(m.key, { sum: 0, count: 0 });
+        const acc = dayMap.get(m.key);
+        acc.sum += pctOf(m); acc.count += 1;
+      });
+    });
+    const days = [...byDay.keys()].sort();
+    const series = [...metricsCatalog.keys()].map((key, i) => ({
+      key,
+      label: displayLabel(key, metricsCatalog.get(key)),
+      color: resolvedColors[i % resolvedColors.length],
+      hidden: state.hiddenMetrics.has(key),
+      points: days.map(d => {
+        const acc = byDay.get(d).get(key);
+        return acc ? acc.sum / acc.count : null;
+      }),
+    }));
+
+    drawLineChart(document.getElementById("trend-chart"), days, series);
+    renderLegend(document.getElementById("trend-legend"), series, (key) => {
+      if (state.hiddenMetrics.has(key)) state.hiddenMetrics.delete(key); else state.hiddenMetrics.add(key);
+      render();
+    });
+    renderTableFromSeries(document.getElementById("trend-table"), ["Giorno", ...series.map(s => s.label)],
+      days.map((d, i) => [d, ...series.map(s => s.points[i] == null ? "—" : s.points[i].toFixed(1) + "%")]));
+  }
+
+  function renderLegend(container, series, onToggle) {
+    container.innerHTML = "";
+    series.forEach(s => {
+      const item = document.createElement("div");
+      item.className = "legend-item" + (s.hidden ? " off" : "");
+      item.innerHTML = `<span class="swatch" style="background:${s.color}"></span>${s.label}`;
+      item.addEventListener("click", () => onToggle(s.key));
+      container.appendChild(item);
+    });
+  }
+
+  function renderTableFromSeries(container, headers, rows) {
+    if (!rows.length) { container.innerHTML = "<p class='status-line'>Nessun dato nel periodo selezionato.</p>"; return; }
+    let html = "<table class='data-table'><thead><tr>" + headers.map(h => `<th>${h}</th>`).join("") + "</tr></thead><tbody>";
+    rows.forEach(row => { html += "<tr>" + row.map(c => `<td>${c}</td>`).join("") + "</tr>"; });
+    html += "</tbody></table>";
+    container.innerHTML = html;
+    container.style.display = container.style.display || "none";
+  }
+
+  function drawLineChart(container, xLabels, series) {
+    const W = 900, H = 260, padL = 34, padR = 12, padT = 12, padB = 24;
+    const visible = series.filter(s => !s.hidden);
+    if (!xLabels.length || !visible.length) { container.innerHTML = "<p class='status-line'>Nessun dato nel periodo selezionato.</p>"; return; }
+
+    const innerW = W - padL - padR, innerH = H - padT - padB;
+    const xStep = xLabels.length > 1 ? innerW / (xLabels.length - 1) : 0;
+    const maxY = 100, minY = 0;
+    const yFor = v => padT + innerH - ((v - minY) / (maxY - minY)) * innerH;
+    const xFor = i => padL + i * xStep;
+
+    let svg = `<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img">`;
+    [0, 25, 50, 75, 100].forEach(v => {
+      const y = yFor(v);
+      svg += `<line class="gridline" x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}"/>`;
+      svg += `<text class="axis-label" x="${padL - 6}" y="${y + 3}" text-anchor="end">${v}</text>`;
+    });
+    const labelEvery = Math.max(1, Math.ceil(xLabels.length / 8));
+    xLabels.forEach((d, i) => {
+      if (i % labelEvery === 0 || i === xLabels.length - 1) {
+        svg += `<text class="axis-label" x="${xFor(i)}" y="${H - 4}" text-anchor="middle">${d.slice(5)}</text>`;
+      }
+    });
+
+    visible.forEach(s => {
+      let path = "";
+      s.points.forEach((v, i) => {
+        if (v == null) return;
+        path += (path ? "L" : "M") + xFor(i).toFixed(1) + " " + yFor(v).toFixed(1) + " ";
+      });
+      svg += `<path d="${path}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+      s.points.forEach((v, i) => {
+        if (v == null) return;
+        svg += `<circle cx="${xFor(i).toFixed(1)}" cy="${yFor(v).toFixed(1)}" r="3" fill="${s.color}" data-i="${i}" data-key="${s.key}"/>`;
+      });
+    });
+    svg += "</svg>";
+    container.innerHTML = svg;
+
+    const svgEl = container.querySelector("svg");
+    svgEl.addEventListener("mousemove", (ev) => {
+      const rect = svgEl.getBoundingClientRect();
+      const relX = ((ev.clientX - rect.left) / rect.width) * W;
+      let idx = Math.round((relX - padL) / (xStep || 1));
+      idx = Math.max(0, Math.min(xLabels.length - 1, idx));
+      const lines = visible.map(s => {
+        const v = s.points[idx];
+        return `<div>${s.label}: ${v == null ? "n/d" : v.toFixed(1) + "%"}</div>`;
+      }).join("");
+      showTooltip(ev.clientX, ev.clientY, `<strong>${xLabels[idx]}</strong>${lines}`);
+    });
+    svgEl.addEventListener("mouseleave", hideTooltip);
+  }
+
+  // ---------- Grouped bar chart (recipes / lines) ----------
+  function aggregateBy(recs, groupKey, activeMetricKeys) {
+    const map = new Map();
+    recs.forEach(r => {
+      const g = r[groupKey];
+      if (!map.has(g)) map.set(g, new Map());
+      const gm = map.get(g);
+      r.metrics.forEach(m => {
+        if (activeMetricKeys && !activeMetricKeys.includes(m.key)) return;
+        if (!gm.has(m.key)) gm.set(m.key, { sum: 0, count: 0 });
+        const acc = gm.get(m.key);
+        acc.sum += pctOf(m); acc.count += 1;
+      });
+    });
+    return map;
+  }
+
+  function renderRecipeChart(recs) {
+    const activeMetricKeys = [...metricsCatalog.keys()].filter(k => !state.hiddenMetrics.has(k));
+    const grouped = aggregateBy(recs, "recipe", activeMetricKeys);
+    const groups = [...grouped.keys()];
+    const metricKeys = activeMetricKeys;
+    const series = metricKeys.map((key, i) => ({
+      key, label: displayLabel(key, metricsCatalog.get(key)), color: resolvedColors[i % resolvedColors.length],
+      values: groups.map(g => { const acc = grouped.get(g).get(key); return acc ? acc.sum / acc.count : null; }),
+    }));
+    drawGroupedBarChart(document.getElementById("recipe-chart"), groups, series);
+    renderTableFromSeries(document.getElementById("recipe-table"), ["Ricetta", ...series.map(s => s.label)],
+      groups.map((g, i) => [g, ...series.map(s => s.values[i] == null ? "—" : s.values[i].toFixed(1) + "%")]));
+  }
+
+  function renderLineChart(recs) {
+    const activeMetricKeys = [...metricsCatalog.keys()].filter(k => !state.hiddenMetrics.has(k));
+    const grouped = aggregateBy(recs, "line", activeMetricKeys);
+    const groups = [...grouped.keys()];
+    const metricKeys = activeMetricKeys;
+    const series = metricKeys.map((key, i) => ({
+      key, label: displayLabel(key, metricsCatalog.get(key)), color: resolvedColors[i % resolvedColors.length],
+      values: groups.map(g => { const acc = grouped.get(g).get(key); return acc ? acc.sum / acc.count : null; }),
+    }));
+    drawGroupedBarChart(document.getElementById("line-chart"), groups, series);
+    renderTableFromSeries(document.getElementById("line-table"), ["Linea", ...series.map(s => s.label)],
+      groups.map((g, i) => [g, ...series.map(s => s.values[i] == null ? "—" : s.values[i].toFixed(1) + "%")]));
+  }
+
+  function drawGroupedBarChart(container, groups, series) {
+    const W = 900, H = 260, padL = 34, padR = 12, padT = 12, padB = 30;
+    if (!groups.length || !series.length) { container.innerHTML = "<p class='status-line'>Nessun dato nel periodo selezionato.</p>"; return; }
+
+    const innerW = W - padL - padR, innerH = H - padT - padB;
+    const groupW = innerW / groups.length;
+    const barGap = 3, groupPad = 10;
+    const barW = Math.max(4, (groupW - groupPad * 2 - barGap * (series.length - 1)) / series.length);
+    const maxY = 100;
+    const yFor = v => padT + innerH - (v / maxY) * innerH;
+
+    let svg = `<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img">`;
+    [0, 25, 50, 75, 100].forEach(v => {
+      const y = yFor(v);
+      svg += `<line class="gridline" x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}"/>`;
+      svg += `<text class="axis-label" x="${padL - 6}" y="${y + 3}" text-anchor="end">${v}</text>`;
+    });
+    svg += `<line class="baseline" x1="${padL}" y1="${yFor(0)}" x2="${W - padR}" y2="${yFor(0)}"/>`;
+
+    groups.forEach((g, gi) => {
+      const groupX = padL + gi * groupW + groupPad;
+      series.forEach((s, si) => {
+        const v = s.values[gi];
+        if (v == null) return;
+        const x = groupX + si * (barW + barGap);
+        const y = yFor(v);
+        svg += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${(yFor(0) - y).toFixed(1)}" rx="3" fill="${s.color}" data-g="${gi}" data-s="${si}"/>`;
+      });
+      svg += `<text class="axis-label" x="${(padL + gi * groupW + groupW / 2).toFixed(1)}" y="${H - 8}" text-anchor="middle">${truncate(g, 16)}</text>`;
+    });
+    svg += "</svg>";
+    container.innerHTML = svg;
+
+    const svgEl = container.querySelector("svg");
+    svgEl.querySelectorAll("rect").forEach(rect => {
+      rect.addEventListener("mousemove", (ev) => {
+        const gi = Number(rect.dataset.g), si = Number(rect.dataset.s);
+        showTooltip(ev.clientX, ev.clientY, `<strong>${groups[gi]}</strong><div>${series[si].label}: ${series[si].values[gi].toFixed(1)}%</div>`);
+      });
+      rect.addEventListener("mouseleave", hideTooltip);
+    });
+
+    const legend = document.createElement("div");
+    legend.className = "legend";
+    series.forEach(s => { legend.innerHTML += `<div class="legend-item"><span class="swatch" style="background:${s.color}"></span>${s.label}</div>`; });
+    container.appendChild(legend);
+  }
+
+  function truncate(s, n) { return s.length > n ? s.slice(0, n - 1) + "…" : s; }
+
+  loadData();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+{
+  "_comment": "Elenco delle linee/fasi collegate al sistema centrale. Aggiungi una riga per ogni nuova linea o fase di produzione monitorata, senza modificare lo script di sync.",
+  "sources": [
+    {
+      "id": "linea1",
+      "label": "Linea 1 - Controllo Estetico Tramezzini Impacchettati",
+      "phase": "Confezionamento",
+      "source_db_path": "\\\\PC-LINEA1\\SmartWichesShare\\smartwiches.db",
+      "enabled": true
+    }
+  ]
+}

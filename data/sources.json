@@ -1,0 +1,10 @@
+[
+  {
+    "id": "linea1",
+    "label": "Linea 1 - Controllo Estetico Tramezzini Impacchettati",
+    "phase": "Confezionamento",
+    "file": "linea1.jsonl",
+    "last_sync": "2026-07-03T14:00:00+00:00",
+    "last_new_records": 5885
+  }
+]
